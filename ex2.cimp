@@ -4,7 +4,7 @@ program fibonacci
     
     function fibonacci(in x)
     {
-        return (fibonacci(in x-1)+fibonacci(in x-2));
+        return (fibonacci(in x-1) + fibonacci(in x-2));
     }
     
     input(x);

@@ -1,6 +1,6 @@
 program countDigits
 {
-    declare x;
+    declare x, count;
     
     # main #
     input(x);
