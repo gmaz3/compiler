@@ -12,7 +12,7 @@ def main():
     # with open(sys.argv[1], 'r') as inputFile:
     #     source = inputFile.read()
     
-    file = open("ex5.cimp","r")
+    file = open("ex2_b.cimp","r")
     
     source = file.read()
         
@@ -21,7 +21,7 @@ def main():
     
     # print ("----------------------\n" + source + "\n----------------------")
     
-    parser.activateTreeView()
+    # parser.activateTreeView()
     parser.program() # Start the parser
     print("Parsing complete.")
     

@@ -21,32 +21,43 @@ def increaseIndexSpace():
 import sys
 from lex import *
 
+
+class Parameter:
+    def __init__(self,par_id, par_type):
+        self.id = par_id
+        self.type = par_type # True: means is 'in' param, False: means is a 'inout'
+
 # Management of the validity of the function calls and the use of variables
 # This class is used in order to check if function calls are correct, for instance we used it to check if the function is already defined
 # if the number of parameters in the call is correct. Also when we used a variable if the variable has been defined before.
 class Program:
     def __init__(self, identifier, parameters):
         self.id = identifier        # subprogram id
-        self.params = parameters    # subprogram parameters
+        self.params = []    # subprogram parameters, is a list of Paramenter; there are two types: in(True), inout(False)
         self.vars = []              # variables declared inside the program context
         self.programs = []          # subprograms declared inside the program context
 
         self.programs.append(self)
 
         for i in parameters:        # fill vars list up
-            self.vars.append(i)
+            self.params.append(i)
+            self.vars.append(i.id)
 
     # Check if var_id is already defined in the program context. true -> is defined; false -> is not defined
     def checkVarDefined(self, var_id):
         return self.vars.count(var_id) != 0
 
     # Check if is posible to call func_id, with parameters in the func_params list.
-    def checkCallPosible(self, func_id, num_params):
+    def checkCallPosible(self, func_id, params_type): # params_type is a list with the type of every parameter
         for subprog in self.programs:
             # print(str(subprog))
             if subprog.id == func_id:
-                if len(subprog.params) == num_params:
+                nop = len(subprog.params)
+                if nop == len(params_type): #number of parameters
                     # print("es posible hacer la llamada a la funcion " + func_id)
+                    for i in range(nop):
+                        if subprog.params[i].type != params_type[i]:
+                            return False
                     return True
 
         return False
@@ -59,7 +70,7 @@ class Program:
     # Append program to defined program list
     def addSubprogram(self, subpr):
         # print("programas de self: " + str(self.programs))
-        if not self.checkCallPosible(subpr.id, len(subpr.params)):
+        if not self.checkCallPosible(subpr.id, subpr.params):
             self.programs.append(subpr)
 
 
@@ -111,13 +122,19 @@ class Parser:
 
     def addSubprogram(self, prog):
         self.contextStack[-1].addSubprogram(prog)
-
+    
     def checkVarDefined(self, var_id):
-        return self.contextStack[-1].checkVarDefined(var_id)
+        for i in reversed(self.contextStack):
+            if i.checkVarDefined(var_id):
+                return True
+        return False
 
-    def checkCallPosible(self, func_id, num_params):
-        return self.contextStack[-1].checkCallPosible(func_id, num_params)
-
+    def checkCallPosible(self, func_id, params_type):
+        for i in reversed(self.contextStack):
+            if i.checkCallPosible(func_id, params_type):
+                return True
+        return False
+            
     # Tree view functions
     
     def activateTreeView(self):
@@ -250,15 +267,15 @@ class Parser:
         increaseIndexSpace()
         params = []
         if self.checkToken("IN") or self.checkToken("INOUT"):
-            var_id = self.formalparitem()
-            params.append(var_id)
-            self.addVariable(var_id)
+            new_par = self.formalparitem()
+            params.append(new_par)
+            self.addVariable(new_par.id)
 
             while self.checkToken("COM"):
                 self.nextToken()
-                var_id = self.formalparitem()
-                params.append(var_id)
-                self.addVariable(var_id)
+                new_par = self.formalparitem()
+                params.append(new_par)
+                self.addVariable(new_par.id)
 
         decreaseIndexSpace()
         return params
@@ -271,15 +288,21 @@ class Parser:
         increaseIndexSpace()
         var_id = None
 
-        if self.checkToken("IN") or self.checkToken("INOUT"):
+        if self.checkToken("IN"):
             self.nextToken()
             var_id = self.curToken[1]
+            var_tp = True
+            self.match("ID")
+        elif self.checkToken("INOUT"):
+            self.nextToken()
+            var_id = self.curToken[1]
+            var_tp = False
             self.match("ID")
         else:
             self.abort("System expected a formal parameter.")
 
         decreaseIndexSpace()
-        return var_id
+        return Parameter(var_id, var_tp)
 
     # statements syntax
     # statement ;
@@ -517,11 +540,11 @@ class Parser:
             func_id = self.currentToken[1]
             self.match("ID")
             self.match("OPAR")
-            num_param = self.actualparlist()
+            par_list = self.actualparlist()
             self.match("CPAR")
 
-            if not self.checkCallPosible(func_id, num_param):
-                self.abort("Problem calling the function " + func_id + ". Check if the function has been defined and if the number of arguments is correct.")
+            if not self.checkCallPosible(func_id, par_list):
+                self.abort("Problem calling the function " + func_id + ". Check if the function has been defined and if the number of arguments is correct and check the type of each parameter.")
         decreaseIndexSpace()
 
     # printStat syntax
@@ -561,18 +584,16 @@ class Parser:
         if self.treeView:
             print(index_space + "ACTUALPARLIST")
         increaseIndexSpace()
-        num_par = 0
+        par_list = []
         if self.checkToken("IN") or self.checkToken("INOUT"):
-            self.actualparitem()
-            num_par+=1
+            par_list.append(self.actualparitem())
 
             while self.checkToken("COM"):
-                num_par+=1
                 self.nextToken()
-                self.actualparitem()
+                par_list.append(self.actualparitem())
 
         decreaseIndexSpace()
-        return num_par
+        return par_list
 
     # acutalparitem syntax
     #   in expression | inout ID
@@ -583,10 +604,12 @@ class Parser:
         if self.checkToken("IN"):
             self.nextToken()
             self.expression()
+            return True
         elif self.checkToken("INOUT"):
             self.nextToken()
             if self.checkVarDefined(self.curToken[1]):
                 self.match("ID")
+                return False
             else:
                 self.abort("Variable " + self.curToken[1] + " has not been defined.")
         else:
@@ -697,11 +720,12 @@ class Parser:
             # print(self.contextStack[-1].programs)
             ident = self.curToken[1]
             self.nextToken()
-            num_params = self.idtail()
+            params = self.idtail()
             # print("llamada a id: " + ident + ", numero de param: " + str(num_params))
             # print(str(self.checkCallPosible(ident, num_params)))
             # print("function id: " + str(self.contextStack[-1].programs[-1].id) + ", numero de param: " + str(len(self.contextStack[-1].programs[-1].params)))
-            if not self.checkVarDefined(ident) and not self.checkCallPosible(ident, num_params):
+            # print(params)
+            if not self.checkVarDefined(ident) and not self.checkCallPosible(ident, params):
                 self.abort("System expected a function or variable, but " + ident + " has not been defined.")
             # print("--> realizada la llamada")
         else:
@@ -715,16 +739,16 @@ class Parser:
         if self.treeView:
             print(index_space + "IDTAIL")
         increaseIndexSpace()
-        num_par = 0
-        if self.checkToken("OPAR"):
+        par_type = None
+        if self.checkToken("OPAR"): # then is a function call
             # print("entro idtail")
             self.nextToken()
-            num_par = self.actualparlist()
+            par_type = self.actualparlist()
             self.match("CPAR")
             # print("salgo idtail")
 
         decreaseIndexSpace()
-        return num_par
+        return par_type
 
     # optionalSign syntax
     #   ADD_OP | E

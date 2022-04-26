@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from parse import *
+# from parse import *
 
 def main():
     print("Test")
@@ -22,25 +22,7 @@ def main():
     #     print("No encontrado\n")
     # else:
     #     print("Encontrado\t" + str(nm) + " veces")
-    
-    print("Testing Program Class")
-    
-    contextStack = []
-    main = Program("main", [])
-    print("sub: " + str(main))
-    sub = Program("fibo", ["x", "r"])
-    print("sub: " + str(sub))
-    
-    main.addSubprogram(sub)
-    
-    
-    print(str(main.programs))
-    
-    if main.checkCallPosible("fibo", 1):
-        print("is possible to call functin " + sub.id)
-    else:
-        print("is not possible to call function " + sub.id)
-    # contextStack.append(main)
+
     
     # main.addVariable("var1")
     
