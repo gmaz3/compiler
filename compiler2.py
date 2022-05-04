@@ -2,6 +2,7 @@
 
 from lex import *
 from parse import *
+from intercodgen import *
 import sys
 
 def main():
@@ -12,18 +13,21 @@ def main():
     # with open(sys.argv[1], 'r') as inputFile:
     #     source = inputFile.read()
     
-    file = open("ex2_b.cimp","r")
+    file = open("test.cimp","r")
     
     source = file.read()
         
     lexer = Lexer(source)
-    parser = Parser(lexer)
+    intercod = IntermediateCode()
+    parser = Parser(lexer,intercod)
     
     # print ("----------------------\n" + source + "\n----------------------")
     
     # parser.activateTreeView()
     parser.program() # Start the parser
     print("Parsing complete.")
+    for i in intercod.quads:
+        print(i)
     
 main()# -*- coding: utf-8 -*-
 

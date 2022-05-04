@@ -75,12 +75,13 @@ class Program:
 
 
 class Parser:
-    def __init__(self, lexer):
+    def __init__(self, lexer, intercod):
         self.lexer = lexer
         self.curToken  = None  # curToken[0] store token kind, curToken store the token symbol
         self.peekToken = None
         self.treeView  = False
         self.contextStack = [] # Stack of program istances that store the vars, and subprograms of the current program. I have used the list as a stack
+        self.intercod = intercod
 
         self.nextToken()
         self.nextToken()
@@ -399,10 +400,13 @@ class Parser:
             print(index_space + "ASSIGSTAT")
         increaseIndexSpace()
         if self.checkPeek("ASIG"):
-            if self.checkVarDefined(self.curToken[1]):
+            asig_var = self.curToken[1]
+            if self.checkVarDefined(asig_var):
                 self.nextToken()
                 self.nextToken()
-                self.expression()
+                e_place = self.expression()
+                self.intercod.addQuad("ASIG",e_place,None,asig_var)
+                self.intercod.freeTmpVar(e_place)
             else:
                 self.abort("Variable " + self.curToken[1] + " has not been defined yet.")
         else:
@@ -622,25 +626,40 @@ class Parser:
     def condition(self):
         if self.treeView:
             print(index_space + "CONDITION")
+            
         increaseIndexSpace()
-        self.boolterm()
+        e1_place = self.boolterm()
 
         while self.checkToken("OR"):
-            self.boolterm()
+            e2_place = self.boolterm()
+            self.intercod.freeTmpVar(e1_place)
+            self.intercod.freeTmpVar(e2_place)
+            w = self.intercod.newTmpVar()
+            self.intercod.addQuad("OR",e1_place,e2_place,w)
+            e1_place = w
+            
         decreaseIndexSpace()
+        return e1_place
 
     # boolterm syntax
     #   boolfactor ( and boolfactor )*
     def boolterm(self):
         if self.treeView:
             print(index_space + "BOOLTERM")
+            
         increaseIndexSpace()
-        self.boolfactor()
+        e1_place = self.boolfactor()
 
         while self.checkToken("AND"):
-            self.boolfactor()
+            e2_place = self.boolfactor()            
+            self.intercod.freeTmpVar(e1_place)
+            self.intercod.freeTmpVar(e2_place)
+            w = self.intercod.newTmpVar()
+            self.intercod.addQuad("AND",e1_place,e2_place,w)
+            e1_place = w
 
         decreaseIndexSpace()
+        return e1_place
 
     # boolfactor syntax
     #   not [ condition ]
@@ -651,21 +670,37 @@ class Parser:
     def boolfactor(self):
         if self.treeView:
             print(index_space + "BOOLFACTOR")
+            
         increaseIndexSpace()
+        
         if self.checkToken("NOT"):
             self.nextToken()
             self.match("OBRA")
-            self.condition()
+            e_place = self.intercod.newTmpVar()
+            e1_place = self.condition()
+            self.intercod.freeTmpVar(e1_place)
+            self.intercod.addQuad("NOT",e1_place,None,e_place)
             self.match("CBRA")
+            
         elif self.checkToken("OBRA"):
             self.nextToken()
-            self.condition()
+            e_place = self.condition()
             self.match("CBRA")
+            
         else:
-            self.expression()
-            self.rel_op()
-            self.expression()
+            e_place = self.intercod.newTmpVar()
+            
+            e1_place = self.expression()
+            relop = self.rel_op() # store the relop token 
+            e2_place = self.expression()
+            
+            self.intercod.freeTmpVar(e1_place)
+            self.intercod.freeTmpVar(e2_place)
+            
+            self.intercod.addQuad(relop[0],e1_place,e2_place,e_place)
+            
         decreaseIndexSpace()
+        return e_place
 
     # expression syntax
     # optionalSign term (ADD_OP term)*
@@ -674,31 +709,51 @@ class Parser:
             print(index_space + "EXPRESSION")
         increaseIndexSpace()
         # print("entro expresion")
-        self.optionalSign()
-        self.term()
+        
+        minsign = self.optionalSign() # completar esta parte
+        e1_place = self.term(minsign)
 
         while(self.checkToken("PLUS") or self.checkToken("MINUS")):
-            # print("Symbol + or -")
+            token = self.curToken[0]
             self.nextToken()
-            self.term()
+            e2_place = self.term(False)
+            self.intercod.freeTmpVar(e1_place)
+            self.intercod.freeTmpVar(e2_place)
+            w = self.intercod.newTmpVar()
+            self.intercod.addQuad(token,e1_place,e2_place,w)
+            e1_place = w
+            
 
         decreaseIndexSpace()
+        # self.intercod.freeTmpVar()
+        # self.intercod.freeTmpVar()
+        return e1_place # w usually
         # print("salgo expresion")
 
 
     # term syntax
     #   factor (MULT_OP factor)*
-    def term(self):
+    def term(self,minsign):
         if self.treeView:
             print(index_space + "TERM")
+            
         increaseIndexSpace()
-        self.factor()
+        e1_place = self.factor(minsign)
 
         while(self.checkToken("MULT") or self.checkToken("DIV")):
+            token = self.curToken[0]
             self.nextToken()
-            self.factor()
+            e2_place = self.factor(False)
+            self.intercod.freeTmpVar(e1_place)
+            self.intercod.freeTmpVar(e2_place)
+            w = self.intercod.newTmpVar()
+            self.intercod.addQuad(token,e1_place,e2_place,w)
+            e1_place = w
 
         decreaseIndexSpace()
+        # self.intercod.freeTmpVar()
+        # self.intercod.freeTmpVar()
+        return e1_place # w usually
 
     # factor syntax
     #   INTEGER
@@ -706,27 +761,60 @@ class Parser:
     #   ( expression )
     #   | or |
     #   ID idtail
-    def factor(self):
+    def factor(self,minsign):
         if self.treeView:
             print(index_space + "FACTOR")
+            
         increaseIndexSpace()
+            
         if self.checkToken("NUMB"):
+            
+            if minsign:
+                e_place = self.intercod.newTmpVar()
+                e1_place = self.curToken[1]
+                self.intercod.addQuad("UMINUS",e1_place,None,e_place)
+            else:
+                e_place = self.curToken[1]
+                
             self.nextToken()
+            return e_place
+        
         elif self.checkToken("OPAR"):
-            self.nextToken()
-            self.expression()
-            self.match("CPAR")
+            
+            if minsign:
+                self.nextToken()
+                e_place = self.intercod.newTmpVar()
+                e1_place = self.expression()
+                self.match("CPAR")
+                self.intercod.addQuad("UMINUS",e1_place,None,e_place)
+            else:
+                self.nextToken()
+                e_place = self.expression()
+                self.match("CPAR")
+            
+            return e_place
+        
         elif self.checkToken("ID"):
             # print(self.contextStack[-1].programs)
             ident = self.curToken[1]
             self.nextToken()
             params = self.idtail()
-            # print("llamada a id: " + ident + ", numero de param: " + str(num_params))
-            # print(str(self.checkCallPosible(ident, num_params)))
-            # print("function id: " + str(self.contextStack[-1].programs[-1].id) + ", numero de param: " + str(len(self.contextStack[-1].programs[-1].params)))
-            # print(params)
-            if not self.checkVarDefined(ident) and not self.checkCallPosible(ident, params):
+
+            if not self.checkVarDefined(ident) and not self.checkCallPosible(ident, params): #Semantic analysis
                 self.abort("System expected a function or variable, but " + ident + " has not been defined.")
+                
+            if params == None: # if is not a function call then
+            
+                if minsign:
+                    e_place = self.intercod.newTmpVar()
+                    e1_place = ident
+                    self.intercod.addQuad("UMINUS",e1_place,None,e_place)
+                else:
+                    e_place = ident
+                    
+                return e_place
+            else:
+                return None # completar si es una llamada a una funcion
             # print("--> realizada la llamada")
         else:
             self.abort("Syntax expected a factor, starting by a ID or NUMBER token or '(' symbol. ")
@@ -753,12 +841,19 @@ class Parser:
     # optionalSign syntax
     #   ADD_OP | E
     def optionalSign(self):
-        if self.checkToken("PLUS") or self.checkToken("MINUS"):
+        minus_sign = self.checkToken("MINUS")
+        plus_sign = self.checkToken("PLUS")
+        
+        if plus_sign or minus_sign:
             self.nextToken()
+            
+        return minus_sign
 
     # rel_op syntax
     #   = | <= | >= | > | < | <>
     def rel_op(self):
+        tkn = self.curToken
+        
         if self.checkToken("EQ"):
             self.nextToken()
         if self.checkToken("LTEQ"):
@@ -771,6 +866,8 @@ class Parser:
             self.nextToken()
         if self.checkToken("NOTEQ"):
             self.nextToken()
+            
+        return tkn
 
     # add_op syntax
     #   + | -

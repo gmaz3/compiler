@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
 
-# from parse import *
+from intercodgen import *
+import re
 
-def main():
+def main(*argv):
     print("Test")
+    p = re.compile('t_[0-9]+')
+    if p.match('t_43'):
+        print("si se acepta")
+    else:
+        print("no se acepta")
     
     # variables = []
     
@@ -38,8 +44,8 @@ def main():
     # print("A vars:")
     # print(a_vars)
     
-    a = "adios"
-    a = a[0:-2]
+    a = IntermediateCode()
+    a.addQuad("x","d","d","t")
         
         
 main()
