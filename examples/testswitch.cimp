@@ -1,0 +1,22 @@
+program switchTest
+{
+    declare x, count;
+    declare a, b, c, d, e, f;
+    
+    # main #
+    input(x);
+    
+    switchcase
+        case (x = 1)
+        {
+            count := count+1;
+        }
+        case (x = 2)
+        {
+            count := count+4;
+        }
+        case (x>2) count := 0;
+        default print(count);;
+        
+        print(a);
+}.

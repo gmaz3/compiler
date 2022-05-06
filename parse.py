@@ -31,11 +31,12 @@ class Parameter:
 # This class is used in order to check if function calls are correct, for instance we used it to check if the function is already defined
 # if the number of parameters in the call is correct. Also when we used a variable if the variable has been defined before.
 class Program:
-    def __init__(self, identifier, parameters):
+    def __init__(self, identifier, parameters, prog_type):
         self.id = identifier        # subprogram id
         self.params = []    # subprogram parameters, is a list of Paramenter; there are two types: in(True), inout(False)
         self.vars = []              # variables declared inside the program context
         self.programs = []          # subprograms declared inside the program context
+        self.type = prog_type       # whether the program is a function or is a procedure
 
         self.programs.append(self)
 
@@ -48,10 +49,10 @@ class Program:
         return self.vars.count(var_id) != 0
 
     # Check if is posible to call func_id, with parameters in the func_params list.
-    def checkCallPosible(self, func_id, params_type): # params_type is a list with the type of every parameter
+    def checkCallPosible(self, func_id, params_type, prog_type): # params_type is a list with the type of every parameter
         for subprog in self.programs:
             # print(str(subprog))
-            if subprog.id == func_id:
+            if subprog.id == func_id and subprog.type == prog_type:
                 nop = len(subprog.params)
                 if nop == len(params_type): #number of parameters
                     # print("es posible hacer la llamada a la funcion " + func_id)
@@ -70,7 +71,7 @@ class Program:
     # Append program to defined program list
     def addSubprogram(self, subpr):
         # print("programas de self: " + str(self.programs))
-        if not self.checkCallPosible(subpr.id, subpr.params):
+        if not self.checkCallPosible(subpr.id, subpr.params, subpr.type):
             self.programs.append(subpr)
 
 
@@ -130,9 +131,9 @@ class Parser:
                 return True
         return False
 
-    def checkCallPosible(self, func_id, params_type):
+    def checkCallPosible(self, func_id, params_type, func_type):
         for i in reversed(self.contextStack):
-            if i.checkCallPosible(func_id, params_type):
+            if i.checkCallPosible(func_id, params_type, func_type):
                 return True
         return False
             
@@ -158,7 +159,7 @@ class Parser:
             self.nextToken()
 
             if self.checkToken("ID"):
-                main = Program(self.curToken[1],[])
+                main = Program(self.curToken[1],[],None)
                 self.contextStack.append(main)
                 self.nextToken()
 
@@ -238,8 +239,15 @@ class Parser:
     def subprogram(self):
         if self.treeView:
             print(index_space + "SUBPROGRAM")
+            
         increaseIndexSpace()
+        
         if self.checkToken("FUNC") or self.checkToken("PROC"):
+            if self.checkToken("FUNC"):
+                prog_type = 'f'
+            else:
+                prog_type = 'p'
+                
             self.nextToken()
 
             sub_id = self.curToken[1]
@@ -248,7 +256,7 @@ class Parser:
             self.match("OPAR")
             params = self.formalparlist()
             self.match("CPAR")
-            sub = Program(sub_id, params)
+            sub = Program(sub_id, params, prog_type)
             self.addSubprogram(sub)
             self.contextStack.append(sub)
             # print("hago un push en la pila")
@@ -381,8 +389,8 @@ class Parser:
             self.switchcaseStat()
         elif self.checkToken("FOR"):
             self.forcaseStat()
-        elif self.checkToken("INCS"):
-            self.incaseStat()
+        # elif self.checkToken("INCS"):
+        #     self.incaseStat()
         elif self.checkToken("CALL"):
             self.callStat()
         elif self.checkToken("RET"):
@@ -420,14 +428,38 @@ class Parser:
     def ifStat(self):
         if self.treeView:
             print(index_space + "IFSTAT")
+            
         increaseIndexSpace()
+        
         if self.checkToken("IF"):
             self.nextToken()
             self.match("OPAR")
-            self.condition()
+            cond = self.condition()
             self.match("CPAR")
+            
+            end_if = self.intercod.newLabel()
+            self.intercod.freeTmpVar(cond)
+            self.intercod.addQuad("IFN_GOTO",cond,None,end_if)
+            
             self.statements()
+
+            isThereElse = self.checkToken("ELSE")
+            
+            if isThereElse:
+                end_else = self.intercod.newLabel()
+                self.intercod.addQuad("GOTO",end_else,None,None)
+                        
+            self.intercod.addQuad("LAB",end_if,None,None)
+            
             self.elsepart()
+            
+            if isThereElse:
+                self.intercod.addQuad("LAB",end_else,None,None)
+            
+            
+            
+            # self.intercod.slideQuads(if_start,if_end)
+            
         decreaseIndexSpace()
 
     # elsepart syntax
@@ -438,10 +470,13 @@ class Parser:
     def elsepart(self):
         if self.treeView:
             print(index_space + "ELSEPART")
+        
         increaseIndexSpace()
+        
         if self.checkToken("ELSE"):
             self.nextToken()
             self.statements()
+        
         decreaseIndexSpace()
 
     # whileStat syntax
@@ -450,13 +485,26 @@ class Parser:
     def whileStat(self):
         if self.treeView:
             print(index_space + "WHILESTAT")
+            
         increaseIndexSpace()
+        
         if self.checkToken("WHILE"):
             self.nextToken()
+            
             self.match("OPAR")
-            self.condition()
+            start_while = self.intercod.newLabel()
+            end_while   = self.intercod.newLabel()
+            self.intercod.addQuad("LAB",start_while,None,None)
+            cond = self.condition()
+            self.intercod.freeTmpVar(cond)
+            self.intercod.addQuad("IFN_GOTO",cond,None,end_while)            
             self.match("CPAR")
+            
             self.statements()
+            
+            self.intercod.addQuad("GOTO",start_while,None,None)
+            self.intercod.addQuad("LAB",end_while,None,None)
+        
         decreaseIndexSpace()
 
     # switchcaseStat syntax
@@ -465,19 +513,29 @@ class Parser:
     def switchcaseStat(self):
         if self.treeView:
             print(index_space + "SWITCHCASESTAT")
+            
         increaseIndexSpace()
+        
         if self.checkToken("SWITCH"):
             self.nextToken()
 
+            end_switch = self.intercod.newLabel()
+            labels = []
+
             while self.checkToken("CASE"):
+                labels.append(self.intercod.newLabel())
                 self.nextToken()
                 self.match("OPAR")
-                self.condition()
+                cond = self.condition()
                 self.match("CPAR")
+                self.intercod.addQuad("IFN_GOTO",cond,labels[-1],None)
                 self.statements()
-
+                self.intercod.addQuad("GOTO",end_switch,None,None)
+                self.intercod.addQuad("LAB",labels[-1],None,None)
+                
             self.match("DFLT")
             self.statements()
+            self.intercod.addQuad("LAB",end_switch,None,None)
 
         decreaseIndexSpace()
 
@@ -488,49 +546,66 @@ class Parser:
     def forcaseStat(self):
         if self.treeView:
             print(index_space + "FORCASESTAT")
+            
         increaseIndexSpace()
+        
         if self.checkToken("FOR"):
             self.nextToken()
+            
+            start_forcase = self.intercod.newLabel()
+            labels = []
+            
+            self.intercod.addQuad("LAB",start_forcase,None,None)
 
             while self.checkToken("CASE"):
+                labels.append(self.intercod.newLabel())
                 self.nextToken()
                 self.match("OPAR")
-                self.condition()
+                cond = self.condition()
                 self.match("CPAR")
+                self.intercod.addQuad("IFN_GOTO",cond,labels[-1],None)
                 self.statements()
+                self.intercod.addQuad("GOTO",start_forcase,None,None)
+                self.intercod.addQuad("LAB",labels[-1],None,None)
 
             self.match("DFLT")
             self.statements()
+        
         decreaseIndexSpace()
 
     # incaseStat syntax
     # incase ( case ( condition ) statements)*
-    def incaseStat(self):
-        if self.treeView:
-            print(index_space + "INCASE")
-        increaseIndexSpace()
-        if self.checkToken("INCS"):
-            self.nextToken()
+    # def incaseStat(self):
+    #     if self.treeView:
+    #         print(index_space + "INCASE")
+    #     increaseIndexSpace()
+    #     if self.checkToken("INCS"):
+    #         self.nextToken()
 
-            while self.checkToken("CASE"):
-                self.nextToken()
-                self.match("OPAR")
-                self.condition()
-                self.match("CPAR")
-                self.statements()
-        decreaseIndexSpace()
+    #         while self.checkToken("CASE"):
+    #             self.nextToken()
+    #             self.match("OPAR")
+    #             self.condition()
+    #             self.match("CPAR")
+    #             self.statements()
+    #     decreaseIndexSpace()
 
     # returnStat syntax
     #   return ( expression )
     def returnStat(self):
         if self.treeView:
             print(index_space + "RETURNSTAT")
+            
         increaseIndexSpace()
+        
         if self.checkToken("RET"):
             self.nextToken()
             self.match("OPAR")
-            self.expression()
+            e_place = self.expression()
             self.match("CPAR")
+            
+            self.intercod.addQuad("RET",e_place,None,None)
+        
         decreaseIndexSpace()
 
     # callStat syntax
@@ -538,7 +613,9 @@ class Parser:
     def callStat(self):
         if self.treeView:
             print(index_space + "CALLSTAT")
+            
         increaseIndexSpace()
+        
         if self.checkToken("CALL"):
             self.nextToken()
             func_id = self.currentToken[1]
@@ -547,8 +624,11 @@ class Parser:
             par_list = self.actualparlist()
             self.match("CPAR")
 
-            if not self.checkCallPosible(func_id, par_list):
+            if not self.checkCallPosible(func_id, par_list, 'p'):
                 self.abort("Problem calling the function " + func_id + ". Check if the function has been defined and if the number of arguments is correct and check the type of each parameter.")
+
+            self.intercod.addQuad("CALL",func_id,None,None)
+                
         decreaseIndexSpace()
 
     # printStat syntax
@@ -556,12 +636,16 @@ class Parser:
     def printStat(self):
         if self.treeView:
             print(index_space + "PRINTSTAT")
+            
         increaseIndexSpace()
+        
         if self.checkToken("PRINT"):
             self.nextToken()
             self.match("OPAR")
-            self.expression()
+            e_place = self.expression()
             self.match("CPAR")
+            self.intercod.addQuad("PRINT",e_place,None,None)
+            
         decreaseIndexSpace()
 
     # inputStat syntax
@@ -569,15 +653,23 @@ class Parser:
     def inputStat(self):
         if self.treeView:
             print(index_space + "INPUTSTAT")
+            
         increaseIndexSpace()
+        
         if self.checkToken("INPUT"):
             self.nextToken()
             self.match("OPAR")
-            if self.checkVarDefined(self.curToken[1]):
+            var = self.curToken[1]
+            
+            if self.checkVarDefined(var):
                 self.match("ID")
             else:
-                self.abort("Variable " + self.curToken[1] + " has not been defined.")
+                self.abort("Variable " + var + " has not been defined.")
+                
             self.match("CPAR")
+            
+            self.intercod.addQuad("INPUT",None,None,var)
+            
         decreaseIndexSpace()
 
     # actualparlist syntax
@@ -587,14 +679,32 @@ class Parser:
     def actualparlist(self):
         if self.treeView:
             print(index_space + "ACTUALPARLIST")
+            
         increaseIndexSpace()
         par_list = []
+        
         if self.checkToken("IN") or self.checkToken("INOUT"):
-            par_list.append(self.actualparitem())
+            item = self.actualparitem()
+            par_list.append(item[1])
+            
+            if item[1]:
+                mode = "VAL"
+            else:
+                mode = "REF"
+                
+            self.intercod.addQuad("PAR",item[0],mode,None)
 
             while self.checkToken("COM"):
                 self.nextToken()
-                par_list.append(self.actualparitem())
+                item = self.actualparitem()
+                par_list.append(item[1])
+                
+                if item[1]:
+                    mode = "VAL"
+                else:
+                    mode = "REF"
+                    
+                self.intercod.addQuad("PAR",item[0],mode,None)
 
         decreaseIndexSpace()
         return par_list
@@ -607,13 +717,14 @@ class Parser:
         increaseIndexSpace()
         if self.checkToken("IN"):
             self.nextToken()
-            self.expression()
-            return True
+            e_place = self.expression()
+            return [e_place, True]
         elif self.checkToken("INOUT"):
             self.nextToken()
-            if self.checkVarDefined(self.curToken[1]):
+            var = self.curToken[1]
+            if self.checkVarDefined(var):
                 self.match("ID")
-                return False
+                return [var, False]
             else:
                 self.abort("Variable " + self.curToken[1] + " has not been defined.")
         else:
@@ -800,7 +911,7 @@ class Parser:
             self.nextToken()
             params = self.idtail()
 
-            if not self.checkVarDefined(ident) and not self.checkCallPosible(ident, params): #Semantic analysis
+            if not self.checkVarDefined(ident) and not self.checkCallPosible(ident, params, 'f'): #Semantic analysis
                 self.abort("System expected a function or variable, but " + ident + " has not been defined.")
                 
             if params == None: # if is not a function call then
@@ -814,7 +925,10 @@ class Parser:
                     
                 return e_place
             else:
-                return None # completar si es una llamada a una funcion
+                w = self.intercod.newTmpVar()
+                self.intercod.addQuad("PAR",w,"RET",None)
+                self.intercod.addQuad("CALL",ident,None,None)
+                return w
             # print("--> realizada la llamada")
         else:
             self.abort("Syntax expected a factor, starting by a ID or NUMBER token or '(' symbol. ")

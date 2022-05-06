@@ -13,7 +13,7 @@ def main():
     # with open(sys.argv[1], 'r') as inputFile:
     #     source = inputFile.read()
     
-    file = open("test.cimp","r")
+    file = open("examples/ex5.cimp","r")
     
     source = file.read()
         

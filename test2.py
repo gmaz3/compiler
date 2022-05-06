@@ -5,12 +5,21 @@ import re
 
 def main(*argv):
     print("Test")
-    p = re.compile('t_[0-9]+')
-    if p.match('t_43'):
-        print("si se acepta")
-    else:
-        print("no se acepta")
+
+    a = IntermediateCode()
     
+    a.addQuad("0", None, None, None)
+    a.addQuad("1", None, None, None)
+    a.addQuad("2", None, None, None)
+    a.addQuad("3", None, None, None)
+    a.addQuad("4", None, None, None)
+    a.addQuad("5", None, None, None)
+    a.addQuad("6", None, None, None)
+
+    a.slideQuads(3, 5)
+    
+    print(a.quads)
+
     # variables = []
     
     # variables.append("fibonacci")
