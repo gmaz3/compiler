@@ -154,8 +154,11 @@ class Parser:
     def program(self):
         if self.treeView:
             print(index_space + "PROGRAM")
+            
         increaseIndexSpace()
+        
         if self.checkToken("PROG"):
+            self.intercod.addQuad("PROG_BEGIN",None,None,None)
             self.nextToken()
 
             if self.checkToken("ID"):
@@ -165,8 +168,10 @@ class Parser:
 
             self.block()
             self.match("EOP")
+            self.intercod.addQuad("PROG_END",None,None,None)
         else:
             self.abort("Program does not start as expected.")
+        
         decreaseIndexSpace()
 
     # block syntax
@@ -260,7 +265,9 @@ class Parser:
             self.addSubprogram(sub)
             self.contextStack.append(sub)
             # print("hago un push en la pila")
+            self.intercod.addQuad("SUB_BEGIN",sub_id,None,None)
             self.block()
+            self.intercod.addQuad("SUB_END",sub_id,None,None)
             self.contextStack.pop()
             # print("hago un pop en la pila")
         else:
